@@ -155,6 +155,40 @@ COLORS = {
 }
 
 # ============================================================
+# ℹ️ 고령화란? (지도가 나오기 전 설명)
+# ============================================================
+
+current_total = yearly.loc[yearly["연도"] == latest_year, "전체인구"].sum()
+current_elderly = yearly.loc[yearly["연도"] == latest_year, "고령인구"].sum()
+current_rate = round(current_elderly / current_total * 100, 2)
+
+if current_rate >= 20:
+    stage = "초고령사회 (Super-aged Society)"
+elif current_rate >= 14:
+    stage = "고령사회 (Aged Society)"
+elif current_rate >= 7:
+    stage = "고령화사회 (Aging Society)"
+else:
+    stage = "고령화 이전 단계"
+
+st.markdown("### ℹ️ 고령화란?")
+st.markdown(
+    """
+"고령화"란 전체 인구 중에서 **만 65세 이상 인구가 차지하는 비율(고령인구비율)**이 높아지는 현상을 말합니다.
+UN과 통계청은 이 비율을 기준으로 사회 단계를 아래처럼 구분합니다.
+
+| 단계 | 65세 이상 인구 비율 |
+| --- | --- |
+| 고령화사회 (Aging Society) | 7% 이상 |
+| 고령사회 (Aged Society) | 14% 이상 |
+| 초고령사회 (Super-aged Society) | 20% 이상 |
+"""
+)
+st.info(f"📌 {latest_year}년 기준 대한민국 전체 고령인구비율은 **{current_rate}%**로, **{stage}** 단계입니다.")
+st.caption("아래 지도는 시군구별로 이 '65세 이상 인구 비율(고령화율)'을 색으로 나타낸 것입니다.")
+st.markdown("")
+
+# ============================================================
 # 1. 현재 고령화율 지도
 # ============================================================
 
