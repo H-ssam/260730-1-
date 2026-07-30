@@ -6,9 +6,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="전국 고령화 지도", layout="wide")
-st.title("🗺️ 전국 고령화 지도")
-st.caption("시군구별 65세 이상 인구 비율 (행정안전부 주민등록 인구)")
+st.set_page_config(page_title="고령화 및 인구 증감 예측", layout="wide")
+st.title("👵👴 고령화 및 인구 증감 예측")
 
 POP_URL = "https://raw.githubusercontent.com/greatsong/modudata/main/data/population_yearly.csv.gz"
 GEO_URL = "https://raw.githubusercontent.com/greatsong/modudata/main/data/boundaries/sigungu_kr.geojson"
@@ -125,7 +124,6 @@ def add_value_labels(fig, centroids_df: pd.DataFrame, data_df: pd.DataFrame, val
 # 공용 데이터 준비
 # ============================================================
 
-show_labels = st.checkbox("지도에 숫자 라벨 표시", value=True, help="지역이 많아 축소된 화면에서는 라벨이 겹칠 수 있습니다. 필요하면 꺼주세요.")
 
 df_full = load_population()
 geojson = load_geojson()
@@ -188,6 +186,9 @@ st.info(f"📌 {latest_year}년 기준 대한민국 전체 고령인구비율은
 st.caption("아래 지도는 시군구별로 이 '65세 이상 인구 비율(고령화율)'을 색으로 나타낸 것입니다.")
 st.markdown("")
 
+
+st.caption("시군구별 65세 이상 인구 비율 (행정안전부 주민등록 인구)")
+show_labels = st.checkbox("지도에 숫자 라벨 표시", value=True, help="지역이 많아 축소된 화면에서는 라벨이 겹칠 수 있습니다. 필요하면 꺼주세요.")
 # ============================================================
 # 1. 현재 고령화율 지도
 # ============================================================
