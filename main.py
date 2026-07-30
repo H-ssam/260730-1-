@@ -241,3 +241,168 @@ with c3:
 with c4:
     st.subheader(f"🟢 {target_year}년 예측 고령화율 낮은 곳 10")
     st.dataframe(forecast_merged.nsmallest(10, "예측고령화율")[fcols].reset_index(drop=True))
+
+# ============================================================
+# 📊 지역별 전체 인구수 변화 (기존 app.py 아래에 이어 붙이세요)
+# 필요 조건: 기존 코드의 df, names, geojson, load_population(), re, pd, px, st
+#           가 이미 정의되어 있어야 합니다. numpy도 새로 import 합니다.
+# ============================================================
+
+st.markdown("---")
+st.header("📊 지역별 전체 인구수 변화")
+st.caption("고령 인구뿐 아니라 시군구 전체 인구가 어떻게 늘거나 줄었는지, 앞으로 어떻게 될지 살펴봅니다.")
+
+
+@st.cache_data(show_spinner="연도별 전체 인구를 계산하는 중입니다...")
+def build_yearly_population(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """연도 필터링 없이 전체 데이터로 시군구·연도별 총인구를 계산"""
+    d = df_raw.copy()
+    total_cols = [c for c in d.columns if c.startswith("계_")]  # 모든 연령 열 (남+여 합계)
+    d["전체인구"] = d[total_cols].sum(axis=1)
+    d["시군구코드"] = d["코드"].str[:5]
+
+    yearly_pop = (
+        d.groupby(["시군구코드", "연도"])["전체인구"]
+        .sum()
+        .reset_index()
+    )
+    return yearly_pop
+
+
+df_full = load_population()
+yearly_pop = build_yearly_population(df_full)
+
+available_years = sorted(yearly_pop["연도"].unique())
+first_year, last_year = available_years[0], available_years[-1]
+
+# ---------------- 1. 과거 인구 증감 지도 ----------------
+st.subheader("① 과거 인구 증감률")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    start_year = st.selectbox("기준 연도", available_years, index=0)
+with col_b:
+    end_year = st.selectbox("비교 연도", available_years, index=len(available_years) - 1)
+
+wide = yearly_pop.pivot(index="시군구코드", columns="연도", values="전체인구")
+
+if start_year not in wide.columns or end_year not in wide.columns:
+    st.warning("선택한 연도의 데이터가 없습니다.")
+else:
+    change = wide[[start_year, end_year]].dropna().reset_index()
+    change.columns = ["시군구코드", "시작인구", "종료인구"]
+    change["증감인구"] = change["종료인구"] - change["시작인구"]
+    change["증감률"] = ((change["종료인구"] / change["시작인구"] - 1) * 100).round(2)
+
+    change_merged = change.merge(names, on="시군구코드", how="left")
+
+    fig_change = px.choropleth(
+        change_merged,
+        geojson=geojson,
+        locations="시군구코드",
+        featureidkey="properties.코드",
+        color="증감률",
+        color_continuous_scale="RdBu",
+        color_continuous_midpoint=0,  # 0%를 기준으로 감소(빨강)/증가(파랑) 대비
+        hover_name="시군구",
+        hover_data={"증감률": True, "증감인구": True, "시도": True, "시군구코드": False},
+        labels={"증감률": f"{start_year}→{end_year} 인구 증감률(%)"},
+    )
+    fig_change.update_geos(fitbounds="locations", visible=False)
+    fig_change.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=700,
+        coloraxis_colorbar_title=f"증감률(%)",
+    )
+    st.plotly_chart(fig_change, width="stretch")
+
+    c1, c2 = st.columns(2)
+    ccols = ["시도", "시군구", "시작인구", "종료인구", "증감률"]
+    with c1:
+        st.subheader("🔵 인구 늘어난 곳 10")
+        st.dataframe(change_merged.nlargest(10, "증감률")[ccols].reset_index(drop=True))
+    with c2:
+        st.subheader("🔴 인구 줄어든 곳 10")
+        st.dataframe(change_merged.nsmallest(10, "증감률")[ccols].reset_index(drop=True))
+
+# ---------------- 2. 전국 총인구 추이 ----------------
+st.subheader("② 전국 총인구 추이")
+
+national_pop = yearly_pop.groupby("연도")["전체인구"].sum().reset_index()
+fig_national = px.line(
+    national_pop, x="연도", y="전체인구", markers=True, title="전국 총인구 추이"
+)
+st.plotly_chart(fig_national, width="stretch")
+
+# ---------------- 3. 미래 인구수 예측 (CAGR 기반) ----------------
+st.subheader("③ 미래 인구수 예측")
+st.caption(
+    "시군구별 최근 연평균 증감률(CAGR)을 앞으로도 유지한다고 가정한 단순 추세 예측입니다. "
+    "실제로는 출산율·이동 인구 등 다양한 변수에 따라 달라질 수 있습니다."
+)
+
+target_year_pop = st.slider(
+    "예측할 연도 선택",
+    min_value=last_year + 1,
+    max_value=last_year + 30,
+    value=last_year + 10,
+    key="pop_forecast_year",
+)
+
+
+def cagr_forecast(group: pd.DataFrame, year: int) -> float:
+    """시군구별 (첫 연도 인구, 마지막 연도 인구)로 연평균증감률을 구해 미래 인구를 추정"""
+    g = group.sort_values("연도")
+    y0, y1 = g["연도"].iloc[0], g["연도"].iloc[-1]
+    p0, p1 = g["전체인구"].iloc[0], g["전체인구"].iloc[-1]
+    n_years = y1 - y0
+    if n_years <= 0 or p0 <= 0:
+        return float(p1)
+    cagr = (p1 / p0) ** (1 / n_years) - 1
+    forecast = p1 * (1 + cagr) ** (year - y1)
+    return max(float(forecast), 0)  # 인구는 음수가 될 수 없음
+
+
+pop_forecast_rows = [
+    {"시군구코드": code, "예측인구": round(cagr_forecast(g, target_year_pop))}
+    for code, g in yearly_pop.groupby("시군구코드")
+]
+pop_forecast_df = pd.DataFrame(pop_forecast_rows)
+pop_forecast_merged = pop_forecast_df.merge(names, on="시군구코드", how="left")
+
+# 최신 실측 인구 대비 증감률도 같이 표시
+latest_pop = wide[last_year].reset_index()
+latest_pop.columns = ["시군구코드", "최신인구"]
+pop_forecast_merged = pop_forecast_merged.merge(latest_pop, on="시군구코드", how="left")
+pop_forecast_merged["예측증감률"] = (
+    (pop_forecast_merged["예측인구"] / pop_forecast_merged["최신인구"] - 1) * 100
+).round(2)
+
+fig_pop_forecast = px.choropleth(
+    pop_forecast_merged,
+    geojson=geojson,
+    locations="시군구코드",
+    featureidkey="properties.코드",
+    color="예측증감률",
+    color_continuous_scale="RdBu",
+    color_continuous_midpoint=0,
+    hover_name="시군구",
+    hover_data={"예측인구": True, "예측증감률": True, "시도": True, "시군구코드": False},
+    labels={"예측증감률": f"{last_year}→{target_year_pop} 예측 증감률(%)"},
+)
+fig_pop_forecast.update_geos(fitbounds="locations", visible=False)
+fig_pop_forecast.update_layout(
+    margin=dict(l=0, r=0, t=10, b=0),
+    height=700,
+    coloraxis_colorbar_title="예측 증감률(%)",
+)
+st.plotly_chart(fig_pop_forecast, width="stretch")
+
+c3, c4 = st.columns(2)
+pcols = ["시도", "시군구", "최신인구", "예측인구", "예측증감률"]
+with c3:
+    st.subheader(f"🔵 {target_year_pop}년 인구 증가 예상 10")
+    st.dataframe(pop_forecast_merged.nlargest(10, "예측증감률")[pcols].reset_index(drop=True))
+with c4:
+    st.subheader(f"🔴 {target_year_pop}년 인구 감소 예상 10")
+    st.dataframe(pop_forecast_merged.nsmallest(10, "예측증감률")[pcols].reset_index(drop=True))
