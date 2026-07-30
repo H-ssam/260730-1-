@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import plotly.express as px
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -54,11 +55,39 @@ table.columns = ["순위", "영화명", "개봉일", "관객수", "누적관객"
 table = table.sort_values("순위").reset_index(drop=True)
 
 st.subheader("📋 박스오피스 TOP 10")
-st.dataframe(table)
+st.dataframe(
+    table,
+    column_config={
+        "스크린수": st.column_config.NumberColumn(
+            "스크린수",
+            help="어제 하루 동안 이 영화가 상영된 스크린(상영관) 수입니다. "
+                 "영화관 한 곳이 여러 스크린을 가질 수 있어, 숫자가 클수록 더 많은 상영관에서 동시에 걸렸다는 뜻입니다.",
+            format="%d",
+        ),
+    },
+)
 
-st.subheader("📈 관객수 상위 5편")
-top5 = table.sort_values("관객수", ascending=False).head(5)
-st.bar_chart(top5.set_index("영화명")["관객수"])
+st.subheader("📈 관객수 상위 10편")
+top10 = table.sort_values("관객수", ascending=False).head(10).sort_values("관객수")  # 그래프 아래→위로 순위대로 보이게 오름차순 정렬
+
+fig_top10 = px.bar(
+    top10,
+    x="관객수",
+    y="영화명",
+    orientation="h",
+    color="관객수",
+    color_continuous_scale="Blues",
+    text="관객수",
+)
+fig_top10.update_traces(texttemplate="%{text:,}명", textposition="outside")
+fig_top10.update_layout(
+    xaxis_title="관객수(명)",
+    yaxis_title="",
+    coloraxis_showscale=False,
+    margin=dict(l=10, r=70, t=10, b=10),
+    height=520,
+)
+st.plotly_chart(fig_top10, width="stretch")
 
 
 # ============================================================
