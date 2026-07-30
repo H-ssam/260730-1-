@@ -408,11 +408,25 @@ st.markdown("---")
 st.header(f"🇰🇷 전국 총인구 비교 ({BASE_YEAR}년 기준)")
 
 
+def national_cagr_forecast(year: int) -> float:
+    """전국 총인구 '합계' 자체의 CAGR로 미래 인구를 추정합니다.
+    (주의: 시군구별로 각각 CAGR을 구해 합산하면, 신도시처럼 소수의 급성장 지역의 복리 효과가
+    과도하게 반영되어 전체적으로는 감소 추세인데도 증가로 나오는 왜곡이 생길 수 있습니다.
+    그래서 지역별로 나눠 계산하지 않고 전국 합계 시계열 하나로 바로 추정합니다.)"""
+    y0, y1 = national_pop["연도"].iloc[0], national_pop["연도"].iloc[-1]
+    p0, p1 = national_pop["전체인구"].iloc[0], national_pop["전체인구"].iloc[-1]
+    n_years = y1 - y0
+    if n_years <= 0 or p0 <= 0:
+        return float(p1)
+    cagr = (p1 / p0) ** (1 / n_years) - 1
+    return max(float(p1 * (1 + cagr) ** (year - y1)), 0.0)
+
+
 def national_total_for_year(year: int) -> float:
-    """해당 연도의 전국 총인구. 실측 데이터가 있으면 실측값 합계, 없으면 시군구별 CAGR로 추정."""
+    """해당 연도의 전국 총인구. 실측 데이터가 있으면 실측값 합계, 없으면 전국 합계 기준 CAGR로 추정."""
     if year in available_years:
         return float(yearly.loc[yearly["연도"] == year, "전체인구"].sum())
-    return float(sum(cagr_forecast(g, year) for _, g in yearly.groupby("시군구코드")))
+    return national_cagr_forecast(year)
 
 
 baseline_total = national_total_for_year(BASE_YEAR)
